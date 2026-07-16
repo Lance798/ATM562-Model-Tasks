@@ -8,6 +8,8 @@ constexpr int NX = 83;
 constexpr int NZ = 42;
 constexpr double DX = 400.;
 constexpr double DZ = 400.;
+constexpr double DT = 2.;
+constexpr double TIMEEND = 3600.;
 
 // symmetric thermal distribution
 // theta perturbation amplititude
@@ -41,9 +43,11 @@ struct {
 
 // prognostic
 
+inline double avg(double a, double b) { return 0.5 * (a + b); }
+
 void setup_base_state() {
   const double PI_SFC = std::pow(P_SFC / P_0, R_D / C_PD);
-  for (int k = 0; k < NZ; k++) {
+  for (int k = 1; k < NZ - 1; k++) {
     base.theta[k] = 300.; // TODO: ??
 
     base.qv[k] = 0.;
@@ -67,7 +71,14 @@ void setup_base_state() {
     }
     base.p[k] = std::pow(base.pi[k], C_PD / R_D) * P_0;
 
-    base.rhou[k] = base.p[k] / (R_D * base.theta_v[k] * base.pi[k]);
+    // base.rhou[k] = base.p[k] / (R_D * base.theta_v[k] * base.pi[k]);
+
+    // if (k > 1)
+    //   base.rhow[k] = avg(base.rhou[k], base.rhou[k - 1]);
+    // else if (k == 1)
+    //   base.rhow[k] = P_SFC / (R_D * base.theta[k] * PI_SFC);
+    base.rhou[k] = 1.;
+    base.rhow[k] = 1.;
   }
   // boundary conditios
   base.theta[0] = base.theta[1];
@@ -78,12 +89,20 @@ void setup_base_state() {
   base.qv[NZ - 1] = base.qv[NZ - 2];
   base.rhou[0] = base.rhou[1];
   base.rhou[NZ - 1] = base.rhou[NZ - 2];
+  base.rhow[0] = base.rhow[1];
+  base.rhow[NZ - 1] = base.rhow[NZ - 2];
   base.pi[0] = base.pi[1];
   base.pi[NZ - 1] = base.pi[NZ - 2];
+  base.p[0] = base.p[1];
+  base.p[NZ - 1] = base.p[NZ - 2];
 }
 
 int main() {
   // setup base state
+  base = {};
+  past = {};
+  now = {};
+  future = {};
   std::cout << "START" << std::endl;
 
   setup_base_state();
@@ -101,37 +120,185 @@ int main() {
     }
   }
 
+  for (int i = 0; i < NX; i++) {
+    // now.theta_p[i][0] = now.theta_p[i][1];
+    // now.theta_p[i][NZ - 1] = now.theta_p[i][NZ - 2];
+    now.theta_p[i][0] = now.theta_p[i][1];
+    now.theta_p[i][NZ - 1] = now.theta_p[i][NZ - 2];
+  }
+  // horizontal periodic boundary
+  for (int k = 1; k < NZ - 1; k++) {
+    now.theta_p[0][k] = now.theta_p[NX - 2][k];
+    now.theta_p[NX - 1][k] = now.theta_p[1][k];
+  }
+
   for (int i = 1; i < NX - 1; i++) {
     now.pi_p[i][NZ - 2] = 0.;
     now.pi_p[i][NZ - 1] = now.pi_p[i][NZ - 2];
     // integrate downward, assume pi'=0 at top
     for (int k = NZ - 3; k > 0; k--) {
-      double theta_p_top = now.theta_p[i][k + 1];
-      double theta_p_btm = now.theta_p[i][k];
-      double theta_p_avg = (theta_p_top + theta_p_btm) / 2;
-      double theta_top = base.theta[k + 1];
-      double theta_btm = base.theta[k];
-      double theta_avg = (theta_top + theta_btm) / 2;
+      // double theta_p_top = now.theta_p[i][k + 1];
+      // double theta_p_btm = now.theta_p[i][k];
+      // double theta_p_avg = (theta_p_top + theta_p_btm) / 2;
+      // double theta_top = base.theta[k + 1];
+      // double theta_btm = base.theta[k];
+      // double theta_avg = (theta_top + theta_btm) / 2;
+      // TODO: which is correct?
+      //  now.pi_p[i][k] = now.pi_p[i][k + 1] -
+      //                   G / C_PD * theta_p_avg / std::pow(theta_avg, 2.) *
+      //                   DZ;
 
-      now.pi_p[i][k] = now.pi_p[i][k + 1] -
-                       G / C_PD * theta_p_avg / std::pow(theta_avg, 2.) * DZ;
-      // why minus??
-      // now.p_p
+      now.pi_p[i][k] =
+          now.pi_p[i][k + 1] -
+          G * now.theta_p[i][k] / (C_PD * std::pow(base.theta_v[k], 2.)) * DZ;
+      // theta or theta_v??
     }
     now.pi_p[i][0] = now.pi_p[i][1];
   }
 
-  for (int i = 0; i < NX; i++) {
-    for (int k = 0; k < NZ; k++) {
-      future.theta_p[i][k] = now.theta_p[i][k];
+  for (int i = 1; i < NX - 1; i++) {
+    for (int k = 1; k < NZ - 1; k++) {
+      // future.theta_p[i][k] = now.theta_p[i][k];
       // TODO: p_p感覺有問題 在grid top?
       now.p_p[i][k] = now.pi_p[i][k] * C_PD * base.rhou[k] * base.theta_v[k];
     }
   }
-  GradsWriter out("model", NX, NZ, 0., DX, 0., DZ / 1000, {"th", "w"});
-  out.put_field(now.theta_p, 1, 1);
-  out.put_field(now.p_p, 1, 1);
-  out.put_field(now.pi_p, 1, 1);
-  out.end_snapshot();
+
+  for (int i = 0; i < NX; i++) {
+    now.w[i][NZ - 2] = 0;
+    now.w[i][1] = 0;
+
+    now.u[i][0] = now.u[i][1];
+    now.u[i][NZ - 1] = now.u[i][NZ - 2];
+    now.w[i][0] = now.w[i][1];
+    now.w[i][NZ - 1] = now.w[i][NZ - 2];
+    now.theta_p[i][0] = now.theta_p[i][1];
+    now.theta_p[i][NZ - 1] = now.theta_p[i][NZ - 2];
+    now.pi_p[i][0] = now.pi_p[i][1];
+    now.pi_p[i][NZ - 1] = now.pi_p[i][NZ - 2];
+    now.p_p[i][0] = now.p_p[i][1];
+    now.p_p[i][NZ - 1] = now.p_p[i][NZ - 2];
+  }
+
+  // horizontal periodic boundary
+  for (int k = 1; k < NZ - 1; k++) {
+    now.u[0][k] = now.u[NX - 2][k];
+    now.u[NX - 1][k] = now.u[1][k];
+    now.w[0][k] = now.w[NX - 2][k];
+    now.w[NX - 1][k] = now.w[1][k];
+    now.theta_p[0][k] = now.theta_p[NX - 2][k];
+    now.theta_p[NX - 1][k] = now.theta_p[1][k];
+    now.pi_p[0][k] = now.pi_p[NX - 2][k];
+    now.pi_p[NX - 1][k] = now.pi_p[1][k];
+    now.p_p[0][k] = now.p_p[NX - 2][k];
+    now.p_p[NX - 1][k] = now.p_p[1][k];
+  }
+
+  past = now;
+  future = now;
+
+  GradsWriter out("model", NX - 2, NZ - 2, 0., DX / 1000., 0., DZ / 1000.,
+                  {"u", "w", "theta_p", "p_p"});
+
+  double t = 0;
+  while (t <= TIMEEND) {
+    std::cout << "t=" << t << std::endl;
+    out.put_field(now.u, 1, 1);
+    out.put_field(now.w, 1, 1);
+    out.put_field(now.theta_p, 1, 1);
+    out.put_field(now.p_p, 1, 1);
+    out.end_snapshot();
+    for (int i = 1; i < NX - 1; i++) {
+      for (int k = 1; k < NZ - 1; k++) {
+        future.u[i][k] =
+            past.u[i][k] +
+            2. * DT *
+                (-now.u[i][k] * (now.u[i + 1][k] - now.u[i - 1][k]) /
+                     (2. * DX) -
+                 avg(avg(now.w[i][k], now.w[i][k + 1]),
+                     avg(now.w[i - 1][k], now.w[i - 1][k + 1])) *
+                     (now.u[i][k + 1] - now.u[i][k - 1]) / (2. * DZ) -
+                 C_PD * base.theta_v[k] *
+                     (now.pi_p[i][k] - now.pi_p[i - 1][k]) / DX);
+        future.w[i][k] =
+            past.w[i][k] +
+            2. * DT *
+                (-avg(avg(now.u[i][k], now.u[i + 1][k]),
+                      avg(now.u[i][k - 1], now.u[i + 1][k - 1])) *
+                     (now.w[i + 1][k] - now.w[i - 1][k]) / (2. * DX) -
+                 now.w[i][k] * (now.w[i][k + 1] - now.w[i][k - 1]) / (2. * DZ) -
+                 C_PD * avg(base.theta_v[k], base.theta_v[k - 1]) *
+                     (now.pi_p[i][k] - now.pi_p[i][k - 1]) / DZ +
+                 G * avg(now.theta_p[i][k], now.theta_p[i][k - 1]) /
+                     avg(base.theta[k], base.theta[k - 1]));
+        future.theta_p[i][k] =
+            past.theta_p[i][k] +
+            2. * DT *
+                (-avg(now.u[i][k], now.u[i + 1][k]) *
+                     (now.theta_p[i + 1][k] - now.theta_p[i - 1][k]) /
+                     (2. * DX) -
+                 avg(now.w[i][k], now.w[i][k + 1]) *
+                     (now.theta_p[i][k + 1] - now.theta_p[i][k - 1]) /
+                     (2. * DZ) -
+                 avg(now.w[i][k], now.w[i][k + 1]) *
+                     (base.theta[k + 1] - base.theta[k - 1]) / (2. * DZ));
+        double cs = 50.;
+        future.pi_p[i][k] =
+            past.pi_p[i][k] +
+            2 * DT *
+                (-std::pow(cs, 2.) /
+                 (base.rhou[k] * C_PD * std::pow(base.theta_v[k], 2.)) *
+                 (base.rhou[k] * base.theta_v[k] *
+                      (now.u[i + 1][k] - now.u[i][k]) / DX +
+                  (base.rhow[k + 1] *
+                       avg(base.theta_v[k + 1], base.theta_v[k]) *
+                       now.w[i][k + 1] -
+                   base.rhow[k] * avg(base.theta_v[k], base.theta_v[k - 1]) *
+                       now.w[i][k]) /
+                      DZ));
+
+        future.p_p[i][k] =
+            future.pi_p[i][k] * C_PD * base.rhou[k] * base.theta_v[k];
+      }
+    }
+
+    // boundary conditon
+    for (int i = 0; i < NX; i++) {
+      future.w[i][NZ - 2] = 0;
+      future.w[i][1] = 0;
+      now.w[i][NZ - 2] = 0;
+      now.w[i][1] = 0;
+
+      future.u[i][0] = future.u[i][1];
+      future.u[i][NZ - 1] = future.u[i][NZ - 2];
+      future.w[i][0] = 0.;
+      future.w[i][NZ - 1] = 0;
+      future.theta_p[i][0] = future.theta_p[i][1];
+      future.theta_p[i][NZ - 1] = future.theta_p[i][NZ - 2];
+      future.pi_p[i][0] = future.pi_p[i][1];
+      future.pi_p[i][NZ - 1] = future.pi_p[i][NZ - 2];
+      future.p_p[i][0] = future.p_p[i][1];
+      future.p_p[i][NZ - 1] = future.p_p[i][NZ - 2];
+    }
+
+    // horizontal periodic boundary
+    for (int k = 1; k < NZ - 1; k++) {
+      future.u[0][k] = future.u[NX - 2][k];
+      future.u[NX - 1][k] = future.u[1][k];
+      future.w[0][k] = future.w[NX - 2][k];
+      future.w[NX - 1][k] = future.w[1][k];
+      future.theta_p[0][k] = future.theta_p[NX - 2][k];
+      future.theta_p[NX - 1][k] = future.theta_p[1][k];
+      future.pi_p[0][k] = future.pi_p[NX - 2][k];
+      future.pi_p[NX - 1][k] = future.pi_p[1][k];
+      future.p_p[0][k] = future.p_p[NX - 2][k];
+      future.p_p[NX - 1][k] = future.p_p[1][k];
+    }
+
+    past = now;
+    now = future;
+    t += DT;
+  }
+
   return 0;
 }
