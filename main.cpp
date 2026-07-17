@@ -9,7 +9,7 @@ constexpr int NZ = 42;
 constexpr double DX = 400.;
 constexpr double DZ = 400.;
 constexpr double DT = 2.;
-constexpr double TIMEEND = 3600.;
+constexpr double TIMEEND = 1200.;
 
 // symmetric thermal distribution
 // theta perturbation amplititude
@@ -71,14 +71,12 @@ void setup_base_state() {
     }
     base.p[k] = std::pow(base.pi[k], C_PD / R_D) * P_0;
 
-    // base.rhou[k] = base.p[k] / (R_D * base.theta_v[k] * base.pi[k]);
+    base.rhou[k] = base.p[k] / (R_D * base.theta_v[k] * base.pi[k]);
 
-    // if (k > 1)
-    //   base.rhow[k] = avg(base.rhou[k], base.rhou[k - 1]);
-    // else if (k == 1)
-    //   base.rhow[k] = P_SFC / (R_D * base.theta[k] * PI_SFC);
-    base.rhou[k] = 1.;
-    base.rhow[k] = 1.;
+    if (k > 1)
+      base.rhow[k] = avg(base.rhou[k], base.rhou[k - 1]);
+    else if (k == 1)
+      base.rhow[k] = P_SFC / (R_D * base.theta[k] * PI_SFC);
   }
   // boundary conditios
   base.theta[0] = base.theta[1];
@@ -121,8 +119,6 @@ int main() {
   }
 
   for (int i = 0; i < NX; i++) {
-    // now.theta_p[i][0] = now.theta_p[i][1];
-    // now.theta_p[i][NZ - 1] = now.theta_p[i][NZ - 2];
     now.theta_p[i][0] = now.theta_p[i][1];
     now.theta_p[i][NZ - 1] = now.theta_p[i][NZ - 2];
   }
@@ -137,17 +133,6 @@ int main() {
     now.pi_p[i][NZ - 1] = now.pi_p[i][NZ - 2];
     // integrate downward, assume pi'=0 at top
     for (int k = NZ - 3; k > 0; k--) {
-      // double theta_p_top = now.theta_p[i][k + 1];
-      // double theta_p_btm = now.theta_p[i][k];
-      // double theta_p_avg = (theta_p_top + theta_p_btm) / 2;
-      // double theta_top = base.theta[k + 1];
-      // double theta_btm = base.theta[k];
-      // double theta_avg = (theta_top + theta_btm) / 2;
-      // TODO: which is correct?
-      //  now.pi_p[i][k] = now.pi_p[i][k + 1] -
-      //                   G / C_PD * theta_p_avg / std::pow(theta_avg, 2.) *
-      //                   DZ;
-
       now.pi_p[i][k] =
           now.pi_p[i][k + 1] -
           G * now.theta_p[i][k] / (C_PD * std::pow(base.theta_v[k], 2.)) * DZ;
@@ -158,8 +143,6 @@ int main() {
 
   for (int i = 1; i < NX - 1; i++) {
     for (int k = 1; k < NZ - 1; k++) {
-      // future.theta_p[i][k] = now.theta_p[i][k];
-      // TODO: p_p感覺有問題 在grid top?
       now.p_p[i][k] = now.pi_p[i][k] * C_PD * base.rhou[k] * base.theta_v[k];
     }
   }
@@ -234,12 +217,14 @@ int main() {
         future.theta_p[i][k] =
             past.theta_p[i][k] +
             2. * DT *
-                (-avg(now.u[i][k], now.u[i + 1][k]) *
-                     (now.theta_p[i + 1][k] - now.theta_p[i - 1][k]) /
-                     (2. * DX) -
-                 avg(now.w[i][k], now.w[i][k + 1]) *
-                     (now.theta_p[i][k + 1] - now.theta_p[i][k - 1]) /
-                     (2. * DZ) -
+                (-avg(now.u[i + 1][k] *
+                          (now.theta_p[i + 1][k] - now.theta_p[i][k]) / DX,
+                      now.u[i][k] *
+                          (now.theta_p[i][k] - now.theta_p[i - 1][k]) / DX) -
+                 avg(now.w[i][k + 1] *
+                         (now.theta_p[i][k + 1] - now.theta_p[i][k]) / DZ,
+                     now.w[i][k] * (now.theta_p[i][k] - now.theta_p[i][k - 1]) /
+                         DZ) -
                  avg(now.w[i][k], now.w[i][k + 1]) *
                      (base.theta[k + 1] - base.theta[k - 1]) / (2. * DZ));
         double cs = 50.;
