@@ -191,56 +191,64 @@ int main() {
     out.put_field(now.theta_p, 1, 1);
     out.put_field(now.p_p, 1, 1);
     out.end_snapshot();
+    double dt = t == 0 ? DT : 2. * DT;
     for (int i = 1; i < NX - 1; i++) {
       for (int k = 1; k < NZ - 1; k++) {
         future.u[i][k] =
             past.u[i][k] +
-            2. * DT *
-                (-now.u[i][k] * (now.u[i + 1][k] - now.u[i - 1][k]) /
-                     (2. * DX) -
-                 avg(avg(now.w[i][k], now.w[i][k + 1]),
-                     avg(now.w[i - 1][k], now.w[i - 1][k + 1])) *
-                     (now.u[i][k + 1] - now.u[i][k - 1]) / (2. * DZ) -
-                 C_PD * base.theta_v[k] *
-                     (now.pi_p[i][k] - now.pi_p[i - 1][k]) / DX);
+            dt * (-(std::pow(now.u[i + 1][k], 2.) -
+                    std::pow(now.u[i - 1][k], 2.)) /
+                      (2. * DX) -
+                  (1 / base.rhou[k]) *
+                      (base.rhow[k + 1] * avg(now.u[i][k + 1], now.u[i][k]) *
+                           avg(now.w[i][k + 1], now.w[i - 1][k + 1]) -
+                       base.rhow[k] * avg(now.u[i][k], now.u[i][k - 1]) *
+                           avg(now.w[i][k], now.w[i - 1][k])) /
+                      DZ -
+                  C_PD * base.theta_v[k] *
+                      (now.pi_p[i][k] - now.pi_p[i - 1][k]) / DX);
         future.w[i][k] =
             past.w[i][k] +
-            2. * DT *
-                (-avg(avg(now.u[i][k], now.u[i + 1][k]),
-                      avg(now.u[i][k - 1], now.u[i + 1][k - 1])) *
-                     (now.w[i + 1][k] - now.w[i - 1][k]) / (2. * DX) -
-                 now.w[i][k] * (now.w[i][k + 1] - now.w[i][k - 1]) / (2. * DZ) -
-                 C_PD * avg(base.theta_v[k], base.theta_v[k - 1]) *
-                     (now.pi_p[i][k] - now.pi_p[i][k - 1]) / DZ +
-                 G * avg(now.theta_p[i][k], now.theta_p[i][k - 1]) /
-                     avg(base.theta[k], base.theta[k - 1]));
+            dt * (-(avg(now.u[i + 1][k], now.u[i + 1][k - 1]) *
+                        avg(now.w[i][k], now.w[i + 1][k]) -
+                    avg(now.u[i][k], now.u[i][k - 1]) *
+                        avg(now.w[i][k], now.w[i - 1][k])) /
+                      DX -
+                  (1 / base.rhow[k]) *
+                      (base.rhow[k + 1] * std::pow(now.w[i][k + 1], 2.) -
+                       base.rhow[k - 1] * std::pow(now.w[i][k - 1], 2.)) /
+                      (2. * DZ) -
+                  C_PD * avg(base.theta_v[k], base.theta_v[k - 1]) *
+                      (now.pi_p[i][k] - now.pi_p[i][k - 1]) / DZ +
+                  G * now.theta_p[i][k] / base.theta[k]);
         future.theta_p[i][k] =
             past.theta_p[i][k] +
-            2. * DT *
-                (-avg(now.u[i + 1][k] *
-                          (now.theta_p[i + 1][k] - now.theta_p[i][k]) / DX,
-                      now.u[i][k] *
-                          (now.theta_p[i][k] - now.theta_p[i - 1][k]) / DX) -
-                 avg(now.w[i][k + 1] *
-                         (now.theta_p[i][k + 1] - now.theta_p[i][k]) / DZ,
-                     now.w[i][k] * (now.theta_p[i][k] - now.theta_p[i][k - 1]) /
-                         DZ) -
-                 avg(now.w[i][k], now.w[i][k + 1]) *
-                     (base.theta[k + 1] - base.theta[k - 1]) / (2. * DZ));
+            dt * (-(now.u[i + 1][k] *
+                        avg(now.theta_p[i + 1][k], now.theta_p[i][k]) -
+                    now.u[i][k] *
+                        avg(now.theta_p[i][k], now.theta_p[i - 1][k])) /
+                      DX -
+                  (1 / base.rhou[k]) *
+                      (base.rhow[k + 1] * now.w[i][k + 1] *
+                           avg(now.theta_p[i][k + 1], now.theta_p[i][k]) -
+                       base.rhow[k] * now.w[i][k] *
+                           avg(now.theta_p[i][k], now.theta_p[i][k - 1])) /
+                      DZ -
+                  avg(now.w[i][k + 1], now.w[i][k]) *
+                      (base.theta[k + 1] - base.theta[k - 1]) / (2 * DZ));
         double cs = 50.;
         future.pi_p[i][k] =
             past.pi_p[i][k] +
-            2 * DT *
-                (-std::pow(cs, 2.) /
-                 (base.rhou[k] * C_PD * std::pow(base.theta_v[k], 2.)) *
-                 (base.rhou[k] * base.theta_v[k] *
-                      (now.u[i + 1][k] - now.u[i][k]) / DX +
-                  (base.rhow[k + 1] *
-                       avg(base.theta_v[k + 1], base.theta_v[k]) *
-                       now.w[i][k + 1] -
-                   base.rhow[k] * avg(base.theta_v[k], base.theta_v[k - 1]) *
-                       now.w[i][k]) /
-                      DZ));
+            dt * (-std::pow(cs, 2.) /
+                  (base.rhou[k] * C_PD * std::pow(base.theta_v[k], 2.)) *
+                  (base.rhou[k] * base.theta_v[k] *
+                       (now.u[i + 1][k] - now.u[i][k]) / DX +
+                   (base.rhow[k + 1] *
+                        avg(base.theta_v[k + 1], base.theta_v[k]) *
+                        now.w[i][k + 1] -
+                    base.rhow[k] * avg(base.theta_v[k], base.theta_v[k - 1]) *
+                        now.w[i][k]) /
+                       DZ));
 
         future.p_p[i][k] =
             future.pi_p[i][k] * C_PD * base.rhou[k] * base.theta_v[k];

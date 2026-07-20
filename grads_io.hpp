@@ -59,7 +59,7 @@ private:
         << "\n" // so NO 'sequential'
         << "YDEF 1 LINEAR 0 1\n"
         << "ZDEF " << nz_ << " LINEAR " << z0_ << ' ' << dz_ << "\n"
-        << "TDEF " << nt_ << " LINEAR 00Z01JAN2000 1mn\n"
+        << "TDEF " << nt_ << " LINEAR 00Z01JAN2000 1mn\n" // TODO: not 1mn
         << "VARS " << vars_.size() << "\n";
     for (const auto &v : vars_)
       ctl << v << ' ' << nz_ << " 99 " << v << "\n";
