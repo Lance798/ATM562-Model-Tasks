@@ -4,12 +4,17 @@
 #include <numbers>
 #include <ostream>
 
+#define DIFFUSION
+
 constexpr int NX = 83;
 constexpr int NZ = 42;
 constexpr double DX = 400.;
 constexpr double DZ = 400.;
 constexpr double DT = 2.;
 constexpr double TIMEEND = 1200.;
+// diffusion coefficient
+constexpr double KX = 100;
+constexpr double KZ = 10;
 
 // symmetric thermal distribution
 // theta perturbation amplititude
@@ -33,12 +38,14 @@ constexpr double G = 9.81;
 // 2d grid
 struct {
   // _p means prime/perturbation (deviate from base state)
-  double u[NX][NZ], w[NX][NZ], theta_p[NX][NZ], pi_p[NX][NZ], p_p[NX][NZ];
+  double u[NX][NZ], w[NX][NZ], theta_p[NX][NZ], pi_p[NX][NZ], p_p[NX][NZ],
+      qv_p[NX][NZ], qc[NX][NZ], qr[NX][NZ];
 } past, now, future;
 
 // base state
 struct {
-  double theta[NZ], theta_v[NZ], qv[NZ], pi[NZ], p[NZ], rhou[NZ], rhow[NZ];
+  double u[NZ], theta[NZ], theta_v[NZ], qv[NZ], pi[NZ], p[NZ], rhou[NZ],
+      rhow[NZ];
 } base;
 
 // prognostic
@@ -50,16 +57,16 @@ void setup_base_state() {
   for (int k = 1; k < NZ - 1; k++) {
     base.theta[k] = 300.; // TODO: ??
 
-    base.qv[k] = 0.;
-    // if (k >= 1) {
-    //   double z = (k - 1) * DZ + DZ * 0.5;
-    //   if (z <= 4000.)
-    //     base.qv[k] = 0.0161 - 0.000003375 * z;
-    //   else if (z <= 8000.)
-    //     base.qv[k] = 0.0026 - 0.00000065 * (base.qv[k] - 4000.);
-    //   else
-    //     base.qv[k] = 0;
-    // }
+    // base.qv[k] = 0.;
+    if (k >= 1) {
+      double z = (k - 1) * DZ + DZ * 0.5;
+      if (z <= 4000.)
+        base.qv[k] = 0.0161 - 0.000003375 * z;
+      else if (z <= 8000.)
+        base.qv[k] = 0.0026 - 0.00000065 * (z - 4000.);
+      else
+        base.qv[k] = 0;
+    }
 
     base.theta_v[k] = base.theta[k] * (1 + .61 * base.qv[k]);
     if (k == 1) {
@@ -77,6 +84,8 @@ void setup_base_state() {
       base.rhow[k] = avg(base.rhou[k], base.rhou[k - 1]);
     else if (k == 1)
       base.rhow[k] = P_SFC / (R_D * base.theta[k] * PI_SFC);
+
+    base.u[k] = 0;
   }
   // boundary conditios
   base.theta[0] = base.theta[1];
@@ -93,7 +102,11 @@ void setup_base_state() {
   base.pi[NZ - 1] = base.pi[NZ - 2];
   base.p[0] = base.p[1];
   base.p[NZ - 1] = base.p[NZ - 2];
+  base.u[0] = base.u[1];
+  base.u[NZ - 1] = base.u[NZ - 2];
 }
+
+void apply_kessler() {}
 
 int main() {
   // setup base state
@@ -115,6 +128,7 @@ int main() {
             0.5 * TP_AMP * (std::cos(rad * std::numbers::pi) + 1);
       else
         now.theta_p[i][k] = 0.;
+      now.u[i][k] = base.u[k];
     }
   }
 
@@ -196,64 +210,113 @@ int main() {
       for (int k = 1; k < NZ - 1; k++) {
         future.u[i][k] =
             past.u[i][k] +
-            dt * (-(std::pow(now.u[i + 1][k], 2.) -
-                    std::pow(now.u[i - 1][k], 2.)) /
-                      (2. * DX) -
-                  (1 / base.rhou[k]) *
-                      (base.rhow[k + 1] * avg(now.u[i][k + 1], now.u[i][k]) *
-                           avg(now.w[i][k + 1], now.w[i - 1][k + 1]) -
-                       base.rhow[k] * avg(now.u[i][k], now.u[i][k - 1]) *
-                           avg(now.w[i][k], now.w[i - 1][k])) /
-                      DZ -
-                  C_PD * base.theta_v[k] *
-                      (now.pi_p[i][k] - now.pi_p[i - 1][k]) / DX);
+            dt *
+                (-(std::pow(now.u[i + 1][k], 2.) -
+                   std::pow(now.u[i - 1][k], 2.)) /
+                     (2. * DX) -
+                 (1 / base.rhou[k]) *
+                     (base.rhow[k + 1] * avg(now.u[i][k + 1], now.u[i][k]) *
+                          avg(now.w[i][k + 1], now.w[i - 1][k + 1]) -
+                      base.rhow[k] * avg(now.u[i][k], now.u[i][k - 1]) *
+                          avg(now.w[i][k], now.w[i - 1][k])) /
+                     DZ -
+                 C_PD * base.theta_v[k] *
+                     (now.pi_p[i][k] - now.pi_p[i - 1][k]) / DX
+#ifdef DIFFUSION
+                 +
+                 KX * (past.u[i + 1][k] - 2 * past.u[i][k] + past.u[i - 1][k]) /
+                     (std::pow(DX, 2.)) +
+                 KZ *
+                     ((past.u[i][k + 1] - base.u[k + 1]) -
+                      2 * (past.u[i][k] - base.u[k]) +
+                      (past.u[i][k - 1] - base.u[k - 1])) /
+                     (std::pow(DZ, 2.))
+#endif
+                );
         future.w[i][k] =
             past.w[i][k] +
-            dt * (-(avg(now.u[i + 1][k], now.u[i + 1][k - 1]) *
-                        avg(now.w[i][k], now.w[i + 1][k]) -
-                    avg(now.u[i][k], now.u[i][k - 1]) *
-                        avg(now.w[i][k], now.w[i - 1][k])) /
-                      DX -
-                  (1 / base.rhow[k]) *
-                      (base.rhow[k + 1] * std::pow(now.w[i][k + 1], 2.) -
-                       base.rhow[k - 1] * std::pow(now.w[i][k - 1], 2.)) /
-                      (2. * DZ) -
-                  C_PD * avg(base.theta_v[k], base.theta_v[k - 1]) *
-                      (now.pi_p[i][k] - now.pi_p[i][k - 1]) / DZ +
-                  G * now.theta_p[i][k] / base.theta[k]);
+            dt *
+                (-(avg(now.u[i + 1][k], now.u[i + 1][k - 1]) *
+                       avg(now.w[i][k], now.w[i + 1][k]) -
+                   avg(now.u[i][k], now.u[i][k - 1]) *
+                       avg(now.w[i][k], now.w[i - 1][k])) /
+                     DX -
+                 (1 / base.rhow[k]) *
+                     (base.rhow[k + 1] * std::pow(now.w[i][k + 1], 2.) -
+                      base.rhow[k - 1] * std::pow(now.w[i][k - 1], 2.)) /
+                     (2. * DZ) -
+                 C_PD * avg(base.theta_v[k], base.theta_v[k - 1]) *
+                     (now.pi_p[i][k] - now.pi_p[i][k - 1]) / DZ +
+                 G * (now.theta_p[i][k] / base.theta[k] + .61 * now.qv_p[i][k] -
+                      now.qr[i][k])
+#ifdef DIFFUSION
+                 +
+                 KX * (past.w[i + 1][k] - 2 * past.w[i][k] + past.w[i - 1][k]) /
+                     (std::pow(DX, 2.)) +
+                 KZ * (past.w[i][k + 1] - 2 * past.w[i][k] + past.w[i][k - 1]) /
+                     (std::pow(DZ, 2.))
+#endif
+                );
         future.theta_p[i][k] =
             past.theta_p[i][k] +
-            dt * (-(now.u[i + 1][k] *
-                        avg(now.theta_p[i + 1][k], now.theta_p[i][k]) -
-                    now.u[i][k] *
-                        avg(now.theta_p[i][k], now.theta_p[i - 1][k])) /
-                      DX -
-                  (1 / base.rhou[k]) *
-                      (base.rhow[k + 1] * now.w[i][k + 1] *
-                           avg(now.theta_p[i][k + 1], now.theta_p[i][k]) -
-                       base.rhow[k] * now.w[i][k] *
-                           avg(now.theta_p[i][k], now.theta_p[i][k - 1])) /
-                      DZ -
-                  avg(now.w[i][k + 1], now.w[i][k]) *
-                      (base.theta[k + 1] - base.theta[k - 1]) / (2 * DZ));
+            dt *
+                (-(now.u[i + 1][k] *
+                       avg(now.theta_p[i + 1][k], now.theta_p[i][k]) -
+                   now.u[i][k] *
+                       avg(now.theta_p[i][k], now.theta_p[i - 1][k])) /
+                     DX -
+                 (1 / base.rhou[k]) *
+                     (base.rhow[k + 1] * now.w[i][k + 1] *
+                          avg(now.theta_p[i][k + 1], now.theta_p[i][k]) -
+                      base.rhow[k] * now.w[i][k] *
+                          avg(now.theta_p[i][k], now.theta_p[i][k - 1])) /
+                     DZ -
+                 avg(now.w[i][k + 1], now.w[i][k]) *
+                     (base.theta[k + 1] - base.theta[k - 1]) / (2 * DZ)
+#ifdef DIFFUSION
+                 +
+                 KX *
+                     (past.theta_p[i + 1][k] - 2 * past.theta_p[i][k] +
+                      past.theta_p[i - 1][k]) /
+                     (std::pow(DX, 2.)) +
+                 KZ *
+                     (past.theta_p[i][k + 1] - 2 * past.theta_p[i][k] +
+                      past.theta_p[i][k - 1]) /
+                     (std::pow(DZ, 2.))
+#endif
+                );
         double cs = 50.;
         future.pi_p[i][k] =
             past.pi_p[i][k] +
             dt * (-std::pow(cs, 2.) /
-                  (base.rhou[k] * C_PD * std::pow(base.theta_v[k], 2.)) *
-                  (base.rhou[k] * base.theta_v[k] *
-                       (now.u[i + 1][k] - now.u[i][k]) / DX +
-                   (base.rhow[k + 1] *
-                        avg(base.theta_v[k + 1], base.theta_v[k]) *
-                        now.w[i][k + 1] -
-                    base.rhow[k] * avg(base.theta_v[k], base.theta_v[k - 1]) *
-                        now.w[i][k]) /
-                       DZ));
+                      (base.rhou[k] * C_PD * std::pow(base.theta_v[k], 2.)) *
+                      (base.rhou[k] * base.theta_v[k] *
+                           (now.u[i + 1][k] - now.u[i][k]) / DX +
+                       (base.rhow[k + 1] *
+                            avg(base.theta_v[k + 1], base.theta_v[k]) *
+                            now.w[i][k + 1] -
+                        base.rhow[k] *
+                            avg(base.theta_v[k], base.theta_v[k - 1]) *
+                            now.w[i][k]) /
+                           DZ)
+#ifdef DIFFUSION
+                  + KX *
+                        (past.pi_p[i + 1][k] - 2 * past.pi_p[i][k] +
+                         past.pi_p[i - 1][k]) /
+                        (std::pow(DX, 2.)) +
+                  KZ *
+                      (past.pi_p[i][k + 1] - 2 * past.pi_p[i][k] +
+                       past.pi_p[i][k - 1]) /
+                      (std::pow(DZ, 2.))
+#endif
+                 );
 
         future.p_p[i][k] =
             future.pi_p[i][k] * C_PD * base.rhou[k] * base.theta_v[k];
       }
     }
+
+    apply_kessler();
 
     // boundary conditon
     for (int i = 0; i < NX; i++) {
