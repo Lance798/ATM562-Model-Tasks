@@ -9,7 +9,11 @@
 //     constructor out.put_field(w,  1, 1); out.end_snapshot();          //
 //     appends one time level, rewrites .ctl (openable mid-run)
 
+#ifndef __GRADS_IO_HPP__
+#define __GRADS_IO_HPP__
+
 #pragma once
+#include "main.hpp"
 #include <fstream>
 #include <string>
 #include <vector>
@@ -28,8 +32,7 @@ public:
   // f is a C array declared double f[FNX][FNZ], indexed f[i][k]. (i0,k0) =
   // first REAL point. Dimensions are deduced automatically, so arrays of any
   // size work.
-  template <int FNX, int FNZ>
-  void put_field(const double (&f)[FNX][FNZ], int i0, int k0) {
+  void put_field(const Matrix &f, int i0, int k0) {
     buf_.resize(static_cast<size_t>(nx_) * nz_);
     size_t n = 0;
     for (int k = 0; k < nz_; ++k)   // z outer
@@ -73,3 +76,5 @@ private:
   std::ofstream dat_;
   std::vector<float> buf_;
 };
+
+#endif
