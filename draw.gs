@@ -5,23 +5,36 @@
 'set dbuff on'
 
 t_cur = 1
-t_end = 1200
+t_end = 5000
 
 WHILE (t_cur <= t_end)
     'set t ' t_cur
     
     
-    'set gxout shaded'
+    'set gxout grfill'
+    v = -8
+    max_v = 8
+    step = 0.5
+    levels = ''
+
+    while (v <= max_v)
+    levels = levels ' ' v  
+    v = v + step
+    endwhile
+
+    'set clevs' levels
     'd theta_p'
+    'run cbarn'
+
     
     'set gxout contour'
-    'set clab off'
-    'd qv_p'
-    
-    'draw title Time: ' t_cur*2 ' sec'
+    'set clab on'
+    'set cint 1'
+    'd maskout(qr*1000, qr*1000-0.1)'
+
+    'draw title Time: ' t_cur ' sec'
     
     'swap'
-    '! sleep 0.01'
-    t_cur = t_cur + 1
+    t_cur = t_cur + 10
 
 ENDWHILE

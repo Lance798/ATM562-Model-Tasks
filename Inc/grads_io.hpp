@@ -12,7 +12,6 @@
 #ifndef __GRADS_IO_HPP__
 #define __GRADS_IO_HPP__
 
-#pragma once
 #include "main.hpp"
 #include <fstream>
 #include <string>
