@@ -10,7 +10,7 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
-
+img/
 # CLion
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
@@ -87,8 +87,8 @@ vcpkg_installed/
 Testing/
 .cache/
 .DS_Store
-model.ctl
-model.dat
+*.ctl
+*.dat
 TODO
 test.cpp
 job.sh

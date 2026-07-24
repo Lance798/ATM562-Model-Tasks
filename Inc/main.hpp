@@ -13,13 +13,13 @@ constexpr int MODEL_NZ = 420;
 constexpr double DX = 40.;
 constexpr double DZ = 40.;
 constexpr double DT = 0.1;
-constexpr double TIMEEND = 3600 * 3;
+constexpr double TIMEEND = 3600;
 // write output data every OUT_FREQ sec
 constexpr int OUT_PERIOD = 100;
 
 // diffusion coefficient
-constexpr double KX = 150.;
-constexpr double KZ = 150.;
+constexpr double KX = 5.;
+constexpr double KZ = 5.;
 // Robert-Asselin filter
 constexpr double EPSILON = 0.1;
 constexpr double ALPHA = 0.53;
@@ -28,7 +28,7 @@ constexpr double ALPHA = 0.53;
 // theta perturbation amplititude
 constexpr double TP_AMP = 3.; // K
 constexpr double ZCNT = 3000; // m
-constexpr double RADZ = 5000; // m
+constexpr double RADZ = 1000; // m
 constexpr double RADX = 5000; // m
 constexpr int IMID = (MODEL_NX - 1) / 2;
 
