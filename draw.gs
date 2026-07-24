@@ -5,7 +5,7 @@
 'set dbuff on'
 
 t_cur = 1
-t_end = 5000
+t_end = 108
 
 WHILE (t_cur <= t_end)
     'set t ' t_cur
@@ -30,11 +30,11 @@ WHILE (t_cur <= t_end)
     'set gxout contour'
     'set clab on'
     'set cint 1'
-    'd maskout(qr*1000, qr*1000-0.1)'
+    'd maskout(qc*1000, qc*1000-0.1)'
 
-    'draw title Time: ' t_cur ' sec'
+    'draw title Time: ' t_cur*100 ' sec'
     
     'swap'
-    t_cur = t_cur + 10
+    t_cur = t_cur+1
 
 ENDWHILE

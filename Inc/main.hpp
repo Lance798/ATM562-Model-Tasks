@@ -2,18 +2,24 @@
 #define __MAIN_HPP__
 
 #include <array>
+#include <vector>
 
 #define DIFFUSION
 
-constexpr int NX = 1620;
-constexpr int NZ = 420;
+// TODO: I think there's not aligned between MODEL_NX and MODEL_NZ
+//  may affect grads_wrtier
+constexpr int MODEL_NX = 1620;
+constexpr int MODEL_NZ = 420;
 constexpr double DX = 40.;
 constexpr double DZ = 40.;
 constexpr double DT = 0.1;
-constexpr double TIMEEND = 3600.;
+constexpr double TIMEEND = 3600 * 3;
+// write output data every OUT_FREQ sec
+constexpr int OUT_PERIOD = 100;
+
 // diffusion coefficient
-constexpr double KX = 100.;
-constexpr double KZ = 100.;
+constexpr double KX = 150.;
+constexpr double KZ = 150.;
 // Robert-Asselin filter
 constexpr double EPSILON = 0.1;
 constexpr double ALPHA = 0.53;
@@ -22,9 +28,9 @@ constexpr double ALPHA = 0.53;
 // theta perturbation amplititude
 constexpr double TP_AMP = 3.; // K
 constexpr double ZCNT = 3000; // m
-constexpr double RADZ = 1000; // m
-constexpr double RADX = 8000; // m
-constexpr double IMID = (NX - 1) / 2. + 20;
+constexpr double RADZ = 5000; // m
+constexpr double RADX = 5000; // m
+constexpr int IMID = (MODEL_NX - 1) / 2;
 
 constexpr double P_0 = 100000.0; // Pa
 // pressure at model surface
@@ -52,18 +58,55 @@ constexpr double G = 9.81;
 // latent heat of vaporization
 constexpr double L_V = 2.5e6;
 
-using Matrix = std::array<std::array<double, NZ>, NX>;
-using Vector = std::array<double, NZ>;
+using Column = std::array<double, MODEL_NZ>;
+using Matrix = std::vector<Column>;
+namespace VarId {
+enum VarName { U, W, THETA_P, PI_P, P_P, QV_P, QC, QR, NUM_VARS_ };
+} // namespace VarId
 
 // 2d grid
 struct Grid {
   // _p means prime/perturbation (deviate from base state)
-  Matrix u, w, theta_p, pi_p, p_p, qv_p, qc, qr;
+  // Matrix u, w, theta_p, pi_p, p_p, qv_p, qc, qr;
+  std::array<Matrix, VarId::NUM_VARS_> vars;
+
+  Matrix &u = vars[VarId::U];
+  Matrix &w = vars[VarId::W];
+  Matrix &theta_p = vars[VarId::THETA_P];
+  Matrix &pi_p = vars[VarId::PI_P];
+  Matrix &p_p = vars[VarId::P_P];
+  Matrix &qv_p = vars[VarId::QV_P];
+  Matrix &qc = vars[VarId::QC];
+  Matrix &qr = vars[VarId::QR];
+
+  void resize_nx(int n) {
+    for (auto &var : vars) {
+      var.resize(n);
+    }
+  }
+
+  // 1. 預設建構子
+  Grid() = default;
+
+  // 2. 🚨 自訂「拷貝建構子」 (解決陷阱的關鍵！)
+  // 這樣寫會只拷貝 vars 陣列，而下面的 reference 會自動綁定到自己全新的 vars
+  // 身上！
+  Grid(const Grid &other) : vars(other.vars) {}
+
+  // 3. 🚨 自訂「賦值運算子」 (把你之前刪掉的加回來)
+  Grid &operator=(const Grid &other) {
+    vars = other.vars;
+    return *this;
+  }
 };
 
 // base state
 struct Base {
-  Vector u, theta, theta_v, qv, pi, p, rhou, rhow;
+  Column u, theta, theta_v, qv, pi, p, rhou, rhow;
 };
+
+extern Grid *past, *now, *future;
+extern Base base;
+extern unsigned grid_nx;
 
 #endif

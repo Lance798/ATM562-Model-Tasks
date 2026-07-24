@@ -87,3 +87,8 @@ vcpkg_installed/
 Testing/
 .cache/
 .DS_Store
+model.ctl
+model.dat
+TODO
+test.cpp
+job.sh
